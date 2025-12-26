@@ -1,0 +1,33 @@
+{
+    "name": "campus-placement-backend",
+    "version": "1.0.0",
+    "description": "Corporate-First Campus Placement Platform Backend",
+    "main": "app.js",
+    "scripts": {
+        "start": "node app.js",
+        "dev": "nodemon app.js",
+        "db:setup": "psql -d campus_placement -f ../database/schema.sql",
+        "db:seed": "psql -d campus_placement -f ../database/seed_universities.sql",
+        "db:reset": "npm run db:setup && npm run db:seed",
+        "test": "jest"
+    },
+    "dependencies": {
+        "bcryptjs": "^2.4.3",
+        "cors": "^2.8.5",
+        "dotenv": "^16.3.1",
+        "express": "^4.18.2",
+        "helmet": "^7.1.0",
+        "jsonwebtoken": "^9.0.2",
+        "morgan": "^1.10.0",
+        "pg": "^8.11.3"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0",
+        "nodemon": "^3.0.2"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "author": "",
+    "license": "ISC"
+}
