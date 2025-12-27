@@ -59,9 +59,7 @@ app.use('/api/student', studentRoutes);
 app.get('/api/universities', async (req, res) => {
     try {
         const { pool } = require('./config/database');
-        const result = await pool.query(
-            'SELECT id, name, short_code, city, logo_url, website, accreditation FROM universities WHERE is_active = true ORDER BY name'
-        );
+        const result = await pool.query('SELECT id, name, domain FROM universities');
         res.json({ success: true, data: result.rows });
     } catch (error) {
         console.error('Get universities error:', error);
@@ -96,7 +94,7 @@ app.use((err, req, res, next) => {
 // SERVER STARTUP
 // =====================================================
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
     console.log(`
