@@ -4,14 +4,13 @@ const { pool } = require('../config/database');
 const { isValidRole, VALID_ROLES } = require('../middleware/auth');
 
 /**
- * Auth Controller
- * Handles registration, login, password management
- * PC role is NOT allowed
+ * Auth Controller (Full Version)
+ * Updated to match the new simple Database Schema
  */
 
-/**
- * Register a new user
- */
+// ==========================================
+// 1. REGISTER
+// ==========================================
 exports.register = async (req, res) => {
     try {
         const {
@@ -20,15 +19,10 @@ exports.register = async (req, res) => {
             role,
             firstName,
             lastName,
-            phone,
             universityId,
-            // Student fields
+            // Optional fields
             usn,
-            branch,
-            graduationYear,
-            // Corporate fields
             companyName,
-            companyWebsite,
             designation
         } = req.body;
 
@@ -36,11 +30,10 @@ exports.register = async (req, res) => {
         if (!email || !password || !role || !firstName || !lastName) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: email, password, role, firstName, lastName'
+                message: 'Missing required fields: email, password, role, name'
             });
         }
 
-        // Validate role - PC role is NOT allowed
         if (!isValidRole(role)) {
             return res.status(400).json({
                 success: false,
@@ -48,169 +41,93 @@ exports.register = async (req, res) => {
             });
         }
 
-        // Validate university for students and admins
-        if ((role === 'student' || role === 'admin') && !universityId) {
-            return res.status(400).json({
-                success: false,
-                message: 'University is required for students and admins'
-            });
-        }
-
-        // Validate student-specific fields
-        if (role === 'student' && (!usn || !branch || !graduationYear)) {
-            return res.status(400).json({
-                success: false,
-                message: 'USN, branch, and graduation year are required for students'
-            });
-        }
-
-        // Validate corporate-specific fields
-        if (role === 'corporate' && (!companyName || !designation)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Company name and designation are required for corporate users'
-            });
-        }
-
-        // Check if email already exists
-        const existingUser = await pool.query(
-            'SELECT id FROM users WHERE email = $1',
-            [email.toLowerCase()]
-        );
-
+        // Check if email exists
+        const existingUser = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
         if (existingUser.rows.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: 'Email already registered'
-            });
+            return res.status(409).json({ success: false, message: 'Email already registered' });
         }
 
         // Hash password
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        // Insert user
+        // Combine Name
+        const fullName = `${firstName} ${lastName}`.trim();
+
+        // Insert User (Matched to your current DB columns)
         const result = await pool.query(`
-      INSERT INTO users (
-        email, password_hash, role, first_name, last_name, phone,
-        university_id, usn, branch, graduation_year,
-        company_name, company_website, designation
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      RETURNING id, email, role, first_name, last_name
-    `, [
+            INSERT INTO users (
+                name, email, password, role, university_id, 
+                usn, company_name, designation
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, email, role, name
+        `, [
+            fullName,
             email.toLowerCase(),
             passwordHash,
             role,
-            firstName,
-            lastName,
-            phone || null,
-            role === 'corporate' ? null : universityId,
+            (role === 'corporate') ? null : universityId, // Corporate doesn't need Uni ID
             usn || null,
-            branch || null,
-            graduationYear || null,
             companyName || null,
-            companyWebsite || null,
             designation || null
         ]);
 
         const user = result.rows[0];
 
-        // Generate JWT token
+        // Generate Token
         const token = jwt.sign(
             { userId: user.id, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+            { expiresIn: '7d' }
         );
 
         res.status(201).json({
             success: true,
             message: 'Registration successful',
-            data: {
-                user: {
-                    id: user.id,
-                    email: user.email,
-                    role: user.role,
-                    firstName: user.first_name,
-                    lastName: user.last_name
-                },
-                token
-            }
+            data: { user, token }
         });
+
     } catch (error) {
         console.error('Registration error:', error);
         res.status(500).json({ success: false, message: 'Registration failed' });
     }
 };
 
-/**
- * User login
- */
+// ==========================================
+// 2. LOGIN
+// ==========================================
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email and password are required'
-            });
+            return res.status(400).json({ success: false, message: 'Email and password required' });
         }
 
         // Find user
         const result = await pool.query(`
-      SELECT id, email, password_hash, role, first_name, last_name,
-             university_id, is_active, is_verified
-      FROM users
-      WHERE email = $1
-    `, [email.toLowerCase()]);
+            SELECT id, email, password, role, name, university_id 
+            FROM users WHERE email = $1
+        `, [email.toLowerCase()]);
 
         if (result.rows.length === 0) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid email or password'
-            });
+            return res.status(401).json({ success: false, message: 'Invalid email or password' });
         }
 
         const user = result.rows[0];
 
-        // Check if account is active
-        if (!user.is_active) {
-            return res.status(401).json({
-                success: false,
-                message: 'Account is deactivated. Please contact support.'
-            });
-        }
-
-        // Verify role is valid (reject PC users even if they exist in DB)
-        if (!isValidRole(user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: 'Your account role is no longer supported. Please contact support.'
-            });
-        }
-
-        // Verify password
-        const isValidPassword = await bcrypt.compare(password, user.password_hash);
-
+        // Verify Password
+        const isValidPassword = await bcrypt.compare(password, user.password);
         if (!isValidPassword) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid email or password'
-            });
+            return res.status(401).json({ success: false, message: 'Invalid email or password' });
         }
 
-        // Update last login
-        await pool.query(
-            'UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1',
-            [user.id]
-        );
-
-        // Generate JWT token
+        // Generate Token
         const token = jwt.sign(
             { userId: user.id, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+            { expiresIn: '7d' }
         );
 
         res.json({
@@ -221,35 +138,32 @@ exports.login = async (req, res) => {
                     id: user.id,
                     email: user.email,
                     role: user.role,
-                    firstName: user.first_name,
-                    lastName: user.last_name,
-                    universityId: user.university_id,
-                    isVerified: user.is_verified
+                    name: user.name,
+                    universityId: user.university_id
                 },
                 token
             }
         });
+
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ success: false, message: 'Login failed' });
     }
 };
 
-/**
- * Get current user
- */
+// ==========================================
+// 3. GET CURRENT USER
+// ==========================================
 exports.getCurrentUser = async (req, res) => {
     try {
         const result = await pool.query(`
-      SELECT u.id, u.email, u.role, u.first_name, u.last_name, u.phone,
-             u.profile_picture_url, u.university_id, u.usn, u.branch,
-             u.graduation_year, u.cgpa, u.resume_url, u.company_name,
-             u.company_website, u.designation, u.is_verified,
-             uni.name as university_name
-      FROM users u
-      LEFT JOIN universities uni ON u.university_id = uni.id
-      WHERE u.id = $1
-    `, [req.user.id]);
+            SELECT u.id, u.email, u.role, u.name, 
+                   u.university_id, u.usn, u.company_name, u.designation,
+                   uni.name as university_name
+            FROM users u
+            LEFT JOIN universities uni ON u.university_id = uni.id
+            WHERE u.id = $1
+        `, [req.user.id]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'User not found' });
@@ -257,111 +171,73 @@ exports.getCurrentUser = async (req, res) => {
 
         res.json({ success: true, data: result.rows[0] });
     } catch (error) {
-        console.error('Get current user error:', error);
-        res.status(500).json({ success: false, message: 'Failed to get user' });
+        console.error('Get user error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch user' });
     }
 };
 
-/**
- * Logout (client should discard token)
- */
-exports.logout = async (req, res) => {
-    // In a stateless JWT setup, logout is handled client-side
-    // Could implement token blacklisting for enhanced security
-    res.json({
-        success: true,
-        message: 'Logged out successfully'
-    });
-};
-
-/**
- * Refresh token
- */
-exports.refreshToken = async (req, res) => {
-    try {
-        const token = jwt.sign(
-            { userId: req.user.id, role: req.user.role },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-        );
-
-        res.json({
-            success: true,
-            data: { token }
-        });
-    } catch (error) {
-        console.error('Refresh token error:', error);
-        res.status(500).json({ success: false, message: 'Failed to refresh token' });
-    }
-};
-
-/**
- * Forgot password
- */
-exports.forgotPassword = async (req, res) => {
-    // TODO: Implement email sending with reset token
-    res.status(501).json({
-        success: false,
-        message: 'Password reset feature coming soon'
-    });
-};
-
-/**
- * Reset password
- */
-exports.resetPassword = async (req, res) => {
-    // TODO: Implement password reset with token verification
-    res.status(501).json({
-        success: false,
-        message: 'Password reset feature coming soon'
-    });
-};
-
-/**
- * Change password
- */
+// ==========================================
+// 4. CHANGE PASSWORD
+// ==========================================
 exports.changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
 
         if (!currentPassword || !newPassword) {
-            return res.status(400).json({
-                success: false,
-                message: 'Current password and new password are required'
-            });
+            return res.status(400).json({ success: false, message: 'Both passwords are required' });
         }
 
-        // Get user's current password hash
-        const result = await pool.query(
-            'SELECT password_hash FROM users WHERE id = $1',
-            [req.user.id]
-        );
-
-        const isValidPassword = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
-
-        if (!isValidPassword) {
-            return res.status(401).json({
-                success: false,
-                message: 'Current password is incorrect'
-            });
+        // Get current password hash
+        const result = await pool.query('SELECT password FROM users WHERE id = $1', [req.user.id]);
+        
+        // Verify old password
+        const isValid = await bcrypt.compare(currentPassword, result.rows[0].password);
+        if (!isValid) {
+            return res.status(401).json({ success: false, message: 'Current password is incorrect' });
         }
 
         // Hash new password
         const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(newPassword, salt);
+        const newHash = await bcrypt.hash(newPassword, salt);
 
-        // Update password
-        await pool.query(
-            'UPDATE users SET password_hash = $1 WHERE id = $2',
-            [passwordHash, req.user.id]
-        );
+        // Update DB
+        await pool.query('UPDATE users SET password = $1 WHERE id = $2', [newHash, req.user.id]);
 
-        res.json({
-            success: true,
-            message: 'Password changed successfully'
-        });
+        res.json({ success: true, message: 'Password changed successfully' });
+
     } catch (error) {
         console.error('Change password error:', error);
         res.status(500).json({ success: false, message: 'Failed to change password' });
     }
+};
+
+// ==========================================
+// 5. REFRESH TOKEN
+// ==========================================
+exports.refreshToken = async (req, res) => {
+    try {
+        const token = jwt.sign(
+            { userId: req.user.id, role: req.user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+        res.json({ success: true, data: { token } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to refresh token' });
+    }
+};
+
+// ==========================================
+// 6. UTILITIES (Logout / Forgot PW)
+// ==========================================
+exports.logout = async (req, res) => {
+    res.json({ success: true, message: 'Logged out successfully' });
+};
+
+exports.forgotPassword = async (req, res) => {
+    res.status(501).json({ success: false, message: 'Feature coming soon' });
+};
+
+exports.resetPassword = async (req, res) => {
+    res.status(501).json({ success: false, message: 'Feature coming soon' });
 };

@@ -1,14 +1,13 @@
 import { Platform } from 'react-native';
 
 // ==========================================
-// 🚀 CONFIGURATION: TUNNEL MODE
+// 🚀 CONFIGURATION: CLOUD MODE (Render.com)
 // ==========================================
 
-// 👇 PASTE YOUR TUNNEL URL HERE (From the terminal)
-// Example: 'https://slimy-dog-42.loca.lt'
-const TUNNEL_URL = 'https://modern-carrots-add.loca.lt'; 
+// 👇 This is your PERMANENT Cloud Backend
+const CLOUD_URL = 'https://campus-placement-api-5so5.onrender.com';
 
-export const API_URL = `${TUNNEL_URL}/api`;
+export const API_URL = `${CLOUD_URL}/api`;
 
 // ------------------------------------------
 // (Old Local Config - Kept for reference)
@@ -27,8 +26,7 @@ export const api = {
     get: async <T = any>(endpoint: string, token?: string | null): Promise<ApiResponse<T>> => {
         try {
             const headers: Record<string, string> = {
-                // 👇 This header helps bypass the tunnel warning page sometimes
-                'bypass-tunnel-reminder': 'true', 
+                'Content-Type': 'application/json',
             };
             if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -37,7 +35,7 @@ export const api = {
             return res.json();
         } catch (error) {
             console.error('API GET Error:', error);
-            return { success: false, message: 'Network error - Check Tunnel URL' };
+            return { success: false, message: 'Network error - Check Internet Connection' };
         }
     },
 
@@ -45,7 +43,6 @@ export const api = {
         try {
             const headers: Record<string, string> = { 
                 'Content-Type': 'application/json',
-                'bypass-tunnel-reminder': 'true',
             };
             if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -58,7 +55,7 @@ export const api = {
             return res.json();
         } catch (error) {
             console.error('API POST Error:', error);
-            return { success: false, message: 'Network error - Check Tunnel URL' };
+            return { success: false, message: 'Network error - Check Internet Connection' };
         }
     },
 
@@ -66,7 +63,6 @@ export const api = {
         try {
             const headers: Record<string, string> = { 
                 'Content-Type': 'application/json',
-                'bypass-tunnel-reminder': 'true',
             };
             if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -85,7 +81,7 @@ export const api = {
     delete: async <T = any>(endpoint: string, token?: string | null): Promise<ApiResponse<T>> => {
         try {
             const headers: Record<string, string> = {
-                'bypass-tunnel-reminder': 'true',
+                'Content-Type': 'application/json',
             };
             if (token) headers.Authorization = `Bearer ${token}`;
 
